@@ -58,7 +58,7 @@ def conv_forward(X, parameters):
     return logits #(batch, depth)
 
 def compute_cost(logits, Y):
-    return tf.losses.softmax_cross_entropy(onehot_labels=Y, logits=logits)
+    return tf.losses.sparse_softmax_cross_entropy(labels=Y, logits=logits)
 
 def model(conv_dims, params, epochs=100, print_cost=True):
     tf.reset_default_graph()
@@ -70,12 +70,12 @@ def model(conv_dims, params, epochs=100, print_cost=True):
     iterator = dataset.make_initializable_iterator()
     next_batch = iterator.get_next()
     X, Y = create_placeholder('X', shape=[None,32,32,3]), create_placeholder('Y', shape=[None, ], dtype=tf.int32)
-    Y_one_hot = tf.one_hot(Y, 10, axis=-1) #(batch, depth)
+    #Y_one_hot = tf.one_hot(Y, 10, axis=-1) #(batch, depth)
     #print(Y_one_hot.shape)
     logits = conv_forward(X, parameters)
-    loss_op = compute_cost(logits, Y_one_hot)
+    loss_op = compute_cost(logits, Y)
     train_op = tf.train.AdamOptimizer(params['lr']).minimize(loss_op)
-    acc_op = tf.metrics.accuracy(labels=tf.argmax(Y_one_hot), predictions=tf.argmax(logits))
+    acc_op = tf.metrics.accuracy(labels=Y, predictions=tf.argmax(logits, axis=1))
     #------------------------------------------------------------------------------------------
     dataset_test = input_fn(params['testpath'], params['batch_size'], training=False)
     iterator_test = dataset_test.make_initializable_iterator()
@@ -90,7 +90,6 @@ def model(conv_dims, params, epochs=100, print_cost=True):
             epoch_loss = 0
             epoch_acc = 0
             sess.run(iterator.initializer)
-            index = 0
             start = time.process_time()
             while True:
                 batch_loss, batch_acc = 0, 0
@@ -98,17 +97,12 @@ def model(conv_dims, params, epochs=100, print_cost=True):
                     batch_x, batch_y = sess.run(next_batch)
                     #print('batch_x:', batch_x.shape)
                     batch_loss, (batch_acc, _), _ = sess.run([loss_op, acc_op, train_op], feed_dict={X: batch_x, Y: batch_y})
-                    if index%100 == 0:
-                        print(batch_loss, end=' ')
-                    index += 1
-                    #print('batch_acc: ', batch_acc)
                 except tf.errors.OutOfRangeError:
                     break
                 epoch_loss += batch_loss
                 epoch_acc += batch_acc
             epoch_loss /= num_batch
             epoch_acc /= num_batch
-            print()
             end = time.process_time()
             if print_cost:
                 costs.append(epoch_loss)
@@ -141,23 +135,11 @@ def predict(X, parameters):
     tf.reset_default_graph()
     init = tf.global_variables_initializer()
     logits = conv_forward(X, parameters)
-    labels = tf.argmax(logits)
+    labels = tf.argmax(logits, axis=1)
     with tf.Session() as sess:
         sess.run(init)
         labels = sess.run(labels)
         return labels
-
-def test():
-    a = tf.constant([0,2,2,3,3]) #(batch, depth)
-    b = tf.constant([2,2,2,2,3])
-    a_one_hot = tf.one_hot(a, 4)
-    b_one_hot = tf.one_hot(b, 4) #(batch, depth)
-    loss_op = tf.losses.softmax_cross_entropy(onehot_labels=a_one_hot, logits=b_one_hot, reduction='none')
-    print(a_one_hot.shape)
-    init = tf.global_variables_initializer()
-    with tf.Session() as sess:
-        sess.run(init)
-        print(sess.run(loss_op))
 
 if __name__ == '__main__':
     params = {'filepath': 'cifar_train.tfrecords', 
