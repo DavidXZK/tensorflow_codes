@@ -1,2 +1,2 @@
 # tensorflow_codes
-code sample for tensorflow
+code samples for tensorflow.
